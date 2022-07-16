@@ -1,6 +1,64 @@
 <?php 
 
 class Banorte {
+    
+    static public function calculoTir($montantes){
+
+        $ret = -1000000000.0;
+        $juros_inicial = -1.0;
+        $juros_medio = 0.0;
+        $juros_final = 1.0;
+        $vpl_inicial = 0.0;
+        $vpl_final = 0.0;
+        $vf = 0.0;
+        $erro = 1e-5;
+
+        for ($i = 0; $i < 100; $i++) {
+            $vpl_inicial = Self::vpl($juros_inicial, $montantes);
+            $vpl_final = Self::vpl($juros_final, $montantes);
+            if (Self::sinal($vpl_inicial) != Self::sinal($vpl_final)){
+                break;
+            }
+            $juros_inicial -= 1.0;
+            $juros_final += 1.0;
+        };
+        $count = 0;
+        for (; ;) {
+            // Busca por Bisseção
+            $juros_medio = ($juros_inicial + $juros_final) / 2.0;
+            $vpl_medio = Self::vpl($juros_medio, $montantes);
+
+            if(abs($vpl_medio) <= $erro) {
+                // Resultado foi encontrado
+                return $juros_medio * 100.0;
+            };
+            if (Self::sinal($vpl_inicial) == Self::sinal($vpl_medio)) {
+                $juros_inicial = $juros_medio;
+                $vpl_inicial =Self::vpl($juros_medio, $montantes);
+            } else {
+                $juros_final = $juros_medio;
+                $vpl_final = Self::vpl($juros_medio, $montantes);
+            };
+            if (++$count > 10000){
+                throw "looping inválido";
+            }
+        };
+        return $ret;
+    }
+
+    static public function vpl($taxa, $montantes) {
+        print_r('||||||||||||||||||||||||||||||');
+        $ret = $montantes[0];
+        print_r($montantes[0]);
+        for ($i = 1; $i < count($montantes); $i++){
+            $ret += $montantes[$i] / pow((1.0 + $taxa), $i);
+        }
+        return $ret;
+    }
+
+    static public function sinal($x) {
+        return (($x < 0.0) ? -1 : 1 );
+    }
 
     static public function ctrAdquisicionTradicional(){
 
@@ -29,7 +87,7 @@ class Banorte {
         $prestamo = 2250000;
         $valorVivienda = 2500000;
         $porcentajeGastosNotariales = 4;
-        $programa = 'liquidez';
+        $programa = '';
         $enganche = $valorVivienda-$prestamo;
 
 
@@ -88,8 +146,6 @@ class Banorte {
                 break;
         }
 
-        print_r($enganche);
-
         $hoy = date("Y-m-d H:i:s");
         $hoyDateTime = new DateTime(date('Y-m-d'));
         $mes_actual_int = date('n');
@@ -116,6 +172,11 @@ class Banorte {
 
         $tasaCuota = $tasaInput/360*$dias;
         $pagoTotalSimulado = $prestamo*(pow(1+$tasaCuota/100, $periodos)*$tasaCuota/100)/(pow(1+$tasaCuota/100, $periodos)-1);
+        $montantes = array();
+        
+        $cat0 = -$prestamo+($prestamo*.01)+$avaluo+($comisionInvestigacion/1.16);
+        $totalPagosTir = 0;
+
 
         for ($i=1; $i <= $periodos; $i++) { 
 
@@ -139,6 +200,10 @@ class Banorte {
                 // Concatenacion
                 array_push($data, ['periodo'=>$i, 'fechaPago'=>$strFecha_de_pago, 'Dias'=>$dif_dias, 'tasa'=>$tasaInput, 'saldoInicial'=>$saldoInicial, 'pagoCapital'=>$pagoCapital, 'pagoIntereses'=>$pagoInteres, 'iva'=>0,'seguroVida'=>$pagoSeguroVida, 'seguroDanios'=>$pagoSeguroDanios, 'comisionDiferida'=>$comisionDiferida, 'aportacionPatronal'=>0, 'aportacionCapital'=>0, 'pagoMensual'=>$pagoMensual,  'saldoFinal'=>$saldo]);
 
+                // $pagoParaTir = $pagoTotalSimulado+$pagoSeguroVida+($pagoSeguroDanios/1.16)+$comisionDiferida;
+              
+
+
             }else{
                 
                 $fecha_de_pago = $fecha_de_pago->modify('+1 month');
@@ -156,14 +221,37 @@ class Banorte {
 
                 $saldo = $saldo - $pagoCapital;
 
+
                 // Concatenacion
                 array_push($data, ['periodo'=>$i, 'fechaPago'=>$strFecha_de_pago, 'Dias'=>$dias, 'tasa'=>$tasaInput, 'saldoInicial'=>$saldoInicial, 'pagoCapital'=>$pagoCapital, 'pagoIntereses'=>$pagoInteres, 'iva'=>0,'seguroVida'=>$pagoSeguroVida, 'seguroDanios'=>$pagoSeguroDanios, 'comisionDiferida'=>$comisionDiferida, 'aportacionPatronal'=>0, 'aportacionCapital'=>0, 'pagoMensual'=>$pagoMensual,  'saldoFinal'=>$saldo]);
 
-            }      
+            }
+            
+
+            $seguroDeVidaTir = $factorSeguroVida*$saldoInicial;
+            $seguroDeDaniosTir = $valorDestructible*$factorSeguroDanios;
+
+            
+            // print_r('-----------------------------');
+            // print_r($seguroDeDaniosTir);
+            // print_r('-----------------------------');
+            $pagoParaTir = $pagoTotalSimulado+$seguroDeVidaTir+($seguroDeDaniosTir/1.16)+$comisionDiferida;
+
+            array_push($montantes, $totalPagosTir+$cat0);
+            print_r($pagoParaTir);
+            $totalPagosTir = $totalPagosTir+$pagoParaTir;
+            echo('<hr>');
+            
+            // Todos pagos tir - inversion
+
 
         }
 
+        print_r($totalPagosTir+$cat0);
+
+
         $export = array('encabezados'=>$encabezados,'data'=>$data);
+        print_r(Banorte::calculoTir($montantes));
         // return $export;
 
     }
